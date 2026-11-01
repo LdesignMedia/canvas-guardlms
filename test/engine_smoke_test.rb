@@ -32,7 +32,7 @@ class EngineSmokeTest < Minitest::Test
       app = app_class.initialize!
       app.load_tasks
       assert_equal :guardlms, Canvas::Plugin.registered.fetch(0)
-      assert_equal "0.1.0", Canvas::Plugin.registered.fetch(2).fetch(:version)
+      assert_equal "0.2.0", Canvas::Plugin.registered.fetch(2).fetch(:version)
       assert Rake::Task.task_defined?("guardlms:push")
       assert_includes Rake::Task["guardlms:push"].prerequisites, "environment"
     end

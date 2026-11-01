@@ -1,114 +1,109 @@
 # GuardLMS for self-hosted Canvas
 
-A Rails engine connector for issue [#1995](https://github.com/LdesignMedia/guardlms/issues/1995),
-using the same authenticated inventory-push model as Moodle `local_guardlms`.
+A Rails engine using the same website-bound inventory push and browser connection
+model as Moodle `local_guardlms`. Requires self-hosted Canvas; this is not an LTI
+application for Instructure-hosted Canvas.
 
-Reports the Canvas revision, registered Canvas plugin IDs/versions/enabled state,
-and Ruby/Rails versions. No plugin settings, learner records, course records,
-credentials or absolute filesystem paths are collected. A plugin's enabled flag
-is Canvas's `enabled?` result; it does not indicate whether the GuardLMS cron task
-is configured. Plugins without a version and Canvas builds without a `VERSION`
-file report null, rather than an invented version.
+## Install and connect
 
-This initial connector targets **self-hosted Canvas**. It is not an LTI tool and
-cannot be installed into Instructure-hosted Canvas. It has no browser connect UI,
-SDK injection, configuration auditing, gem inventory or Canvas plugin advisory
-catalog. External LTI applications are not Canvas registered server plugins and
-are not enumerated. Updates remain “not checked” in GuardLMS.
+Deploy the companion [GuardLMS changes](https://github.com/LdesignMedia/guardlms/pull/2844)
+(API and dashboard) before using one-click connection.
 
-## Repository and development
-
-The repository starts private. The RubyGem is not published automatically.
-CI tests Ruby 3.1 with Rails 7.2 and Ruby 3.4 with Rails 8.0, then builds the gem.
-The companion GuardLMS receiver must be deployed before distributing the plugin.
-
-## Install
-
-Deploy the GuardLMS API changes before installing the connector.
-
-1. Copy this directory to a stable path on the Canvas server, for example
-   `/opt/guardlms_canvas` (readable by the Canvas service user).
-2. Add `Gemfile.d/guardlms.rb` in the Canvas checkout:
+1. Place this checkout at `/opt/guardlms_canvas`, readable by the Canvas service user.
+2. Add `Gemfile.d/guardlms.rb` to the Canvas checkout:
 
    ```ruby
    gem "guardlms_canvas", path: "/opt/guardlms_canvas"
    ```
 
-3. Run `bundle install` using the Ruby/Bundler version required by that Canvas
-   checkout. Restart Canvas services and check `bundle exec rake -T guardlms`
-   lists `guardlms:push`. No Canvas core patch or database migration is needed.
-4. Register and verify the canonical Canvas website in GuardLMS. Using an
-   authorized GuardLMS session or API key with `websites:write`, call
-   `POST /api/websites/{website_id}/inventory-key` with JSON
-   `{"platform":"canvas"}`. Store the returned `data.token` securely; it is shown
-   only once. Use `data.siteurl` as the canonical URL. Issuing a new inventory key
-   revokes the website's previous inventory keys. Note `data.expires_at` for rotation.
-5. Configure these environment variables in the Canvas service account's secret
-   environment (never in source control or the cron command):
+3. Run `bundle install` using Canvas's Ruby/Bundler, then restart Canvas web services
+   **and background workers**. No core patch or database migration is required.
+4. As a site administrator with **Manage site settings**, open **Site Admin → Plugins
+   → GuardLMS** (the gear), or `/plugins/guardlms/manage`.
+5. Save the canonical HTTPS Canvas URL, then click **Connect to GuardLMS**. Sign in
+   to GuardLMS, approve the site, and return to Canvas. The plugin exchanges a
+   single-use code, encrypts the inventory key using Canvas's own encrypted plugin
+   settings, publishes the ownership verification meta tag, and pushes immediately.
+6. Confirm **Connected**, the last accepted inventory, and the component count.
+   Canvas's worker checks every five minutes and sends inventory once per day.
 
-   ```text
-   GUARDLMS_SITE_URL=https://canvas.example.com
-   GUARDLMS_API_KEY=<website-bound inventory key>
-   GUARDLMS_API_URL=https://api.guardlms.com
-   ```
+**Push now**, **Preview reported data**, and **Disconnect** are available on the same
+page. The page shows last attempt/success, key expiry, errors and reporting status.
+The preview never includes credentials or plugin configuration.
 
-   `GUARDLMS_API_URL` is optional and must be an HTTPS origin without a path,
-   credentials, query or fragment. The connector always uses
-   `/api/externalpush/canvas`. It verifies TLS and never follows redirects.
-   Set a separate URL and key for each cloned/staging installation. A single
-   connector reports the installation, not separate inventories per Canvas account.
-6. From the Canvas root, with that environment loaded, run:
+## Manual keys and server configuration
 
-   ```sh
-   RAILS_ENV=production bundle exec rake guardlms:push
-   ```
+Alternatively, obtain a website-bound inventory key from GuardLMS and enter it under
+**Advanced settings and manual inventory key**. Enable reporting and save. An empty
+key field preserves the stored key. The key is never rendered back into the page.
 
-   Confirm “GuardLMS inventory accepted” and inspect the website's technology
-   inventory in GuardLMS. Then schedule that command daily on **one node**, using
-   your scheduler's environment/secret injection and working-directory settings.
-   For a systemd timer, set `WorkingDirectory` to the Canvas root, `User` to the
-   Canvas service user and `EnvironmentFile` to a protected configuration file.
-   Use the installation's absolute `bundle` executable in `ExecStart`.
+Server environment overrides take precedence:
 
-## Operations
+```text
+GUARDLMS_SITE_URL=https://canvas.example.com
+GUARDLMS_API_KEY=<website-bound inventory key>
+GUARDLMS_API_URL=https://api.guardlms.com
+GUARDLMS_DASHBOARD_URL=https://dashboard.guardlms.com
+```
 
-The command exits nonzero on failure, so connect scheduler failures to your
-existing operations alerts. Success is logged without the payload or key.
-HTTP 401/403 requires a valid replacement inventory key; 422 means check the
-canonical site URL and payload. Network errors, 429 and 5xx leave the previous
-inventory intact; retry on the next run. Redirects are configuration errors:
-configure the actual API origin instead of a redirecting hostname. The client
-uses 10-second connect and 30-second read/write timeouts with no automatic retry.
+Only the site URL and a key are necessary for a wholly environment-managed deployment.
+The API and dashboard values above are defaults; both must be HTTPS origins without
+paths, credentials, queries or fragments. An environment-managed key disables the
+browser Connect button. Disconnect still stops reporting until explicitly re-enabled.
+Environment changes require restarting both web services and workers.
 
-Collection failure aborts the entire push. The receiver requires a complete
-plugin list and replaces the Canvas inventory atomically. Scanner inventory and
-other connectors' components are preserved. The last accepted push supplies the
-existing GuardLMS freshness indicator; this does not prove that scheduled runs
-are healthy indefinitely.
+For diagnostics or an external scheduler, run from the Canvas root:
 
-To disconnect, disable the scheduled task and revoke the key in GuardLMS. Remove
-the gem entry, run `bundle install`, and restart Canvas to uninstall. Existing
-inventory remains historical and follows GuardLMS's normal stale-data rules.
+```sh
+RAILS_ENV=production bundle exec rake guardlms:push
+```
+
+The command respects disabled/disconnected state, exits nonzero on failure, and does
+not print credentials. Prefer the native worker schedule; avoid adding a second daily
+cron. If using an external scheduler, turn off automatic reporting in the UI.
+
+## Reliability and data scope
+
+- Successful pushes schedule the next report after 24 hours. Transient failures
+  retry after 5 minutes, doubling up to 6 hours. HTTP 401/403 stops automatic retries
+  until reconnect or a successful manual push. Expiry is shown as reconnect required.
+- A database-backed lease prevents overlapping pushes. Generation checks prevent an
+  in-flight response from restoring state after settings change or disconnect.
+- TLS verification stays enabled; redirects are refused. Connect/read/write limits
+  are 10/30/30 seconds, with a 45-second overall HTTP request limit.
+- Changing the stored Canvas URL or API destination clears the stored connection.
+  For cloned installations, configure a separate canonical URL and key before
+  starting workers. A copied canonical URL cannot automatically identify a clone.
+- Disconnect clears local credentials and verification state. Revoke the key in
+  GuardLMS as well if it must become unusable everywhere. Uninstall by removing the
+  gem entry, running `bundle install`, and restarting web services and workers.
+
+Reports Canvas revision, registered Canvas plugin IDs/versions/enabled state, and
+Ruby/Rails versions. No learner records, course records, plugin settings, credentials
+or absolute filesystem paths are collected. Unknown versions remain null and updates
+remain “not checked”. A complete inventory replaces the previous Canvas inventory
+atomically; other connectors' records are preserved.
+
+This release does **not** yet implement Moodle's SDK injection, server error capture,
+configuration auditing, gem inventory or a Canvas advisory catalog. External LTI apps
+are not Canvas registered server plugins and are not enumerated. One connector reports
+an installation, not separate inventories for each Canvas account. Last success does
+not prove that the background worker is currently healthy.
 
 ## Development and validation
 
+The repository is private; CI does not publish the RubyGem. CI tests Ruby 3.1/Rails 7.2
+and Ruby 3.4/Rails 8.0, then builds the gem including controllers and templates.
+
 ```sh
-gem install minitest -v '~> 5.0'
-ruby test/connector_test.rb --no-plugins
+gem install minitest -v '~> 5.0' --no-document
 gem install railties -v '~> 7.2.0' --no-document
-ruby test/engine_smoke_test.rb --no-plugins
+for test in test/*_test.rb; do ruby "$test" --no-plugins || exit 1; done
 gem build guardlms_canvas.gemspec
 ```
 
-Backend tests live in [`ExternalPushCanvasTest.php`](https://github.com/LdesignMedia/guardlms/blob/main/backend/tests/Feature/Api/ExternalPushCanvasTest.php) in the
-GuardLMS repository. Ruby unit tests stub the Canvas plugin API and HTTP transport;
-they do not replace installation testing against the target Canvas release.
-A [Docker integration harness](https://github.com/LdesignMedia/guardlms/tree/main/integrations/canvas/docker) also verifies this connector
-inside real Canvas against the GuardLMS receiver, including the scheduled task
-and TLS/authentication failure paths.
-
-The extension points were checked against upstream Canvas:
-[Gemfile.d loading](https://github.com/instructure/canvas-lms/blob/master/Gemfile),
-[engine example](https://github.com/instructure/canvas-lms/blob/master/gems/plugins/moodle_importer/lib/moodle_importer/engine.rb),
-[plugin metadata API](https://github.com/instructure/canvas-lms/blob/master/lib/base/canvas/plugin.rb),
-and [Canvas.revision](https://github.com/instructure/canvas-lms/blob/master/lib/base/canvas.rb).
+The [Docker harness](https://github.com/LdesignMedia/guardlms/tree/feature-canvas-connector-1995/integrations/canvas/docker)
+tests real Canvas against the GuardLMS receiver. Unit tests cover callback state,
+single-use sessions, settings changes, backoff, overlapping jobs, disconnect races and
+sanitized failures. Installation testing against your target Canvas release is still
+required; the Rails engine smoke test uses a minimal Canvas registry double.

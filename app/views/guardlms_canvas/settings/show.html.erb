@@ -1,0 +1,42 @@
+<% provide :page_title, "GuardLMS" %>
+<h1>GuardLMS</h1>
+<p>Connect this Canvas installation to GuardLMS and keep its component inventory up to date.</p>
+<div class="ic-notification ic-notification--info" style="padding: 16px; margin: 16px 0;" role="status">
+  <strong><%= @connection_status %></strong>
+  <% if @settings[:last_error] %><p><%= @settings[:last_error] %></p><% end %>
+</div>
+<dl>
+  <dt>Last accepted inventory</dt><dd><%= @settings[:last_success_at] ? Time.at(@settings[:last_success_at]).utc.strftime("%Y-%m-%d %H:%M UTC") : "Not yet received" %></dd>
+  <dt>Last attempt</dt><dd><%= @settings[:last_attempt_at] ? Time.at(@settings[:last_attempt_at]).utc.strftime("%Y-%m-%d %H:%M UTC") : "Not yet attempted" %></dd>
+  <dt>Reported components</dt><dd><%= @settings[:components_upserted] || "Not yet reported" %></dd>
+  <dt>Key expires</dt><dd><%= @settings[:expires_at] || "Not supplied (check your GuardLMS account)" %></dd>
+  <dt>Automatic reporting</dt><dd><%= @settings[:daily_enabled] == false ? "Off" : "Daily, using Canvas background jobs" %></dd>
+</dl>
+<p>Canvas's background worker must be running. Failed requests retry with backoff; a rejected key requires reconnecting. A last successful push does not prove the worker is currently running.</p>
+<div style="display: flex; flex-wrap: wrap; gap: 8px; margin: 20px 0;">
+  <%= button_to "Connect to GuardLMS", "/plugins/guardlms/connect", method: :post, class: "Button Button--primary", disabled: ENV["GUARDLMS_API_KEY"].present? %>
+  <%= button_to "Push now", "/plugins/guardlms/push", method: :post, class: "Button" %>
+  <%= button_to "Disconnect", "/plugins/guardlms/disconnect", method: :post, class: "Button" %>
+  <%= link_to "Preview reported data", "/plugins/guardlms/preview", class: "Button", target: "_blank", rel: "noopener" %>
+</div>
+<h2>Configuration</h2>
+<p>Save the canonical Canvas URL before connecting. Changing the Canvas URL or API destination removes the stored connection so a clone cannot silently keep reporting as the original site.</p>
+<%= form_tag "/plugins/guardlms/save", method: :post do %>
+  <div class="ic-Form-control">
+    <%= label_tag :site_url, "Canonical Canvas URL", class: "ic-Label" %>
+    <%= url_field_tag :site_url, @config["GUARDLMS_SITE_URL"].presence || request.base_url, required: true, class: "ic-Input", readonly: ENV["GUARDLMS_SITE_URL"].present? %>
+  </div>
+  <p><%= check_box_tag :enabled, "1", !@settings[:disabled] %> <%= label_tag :enabled, "Enable reporting" %></p>
+  <p><%= check_box_tag :daily_enabled, "1", @settings[:daily_enabled] != false %> <%= label_tag :daily_enabled, "Automatically report inventory daily" %></p>
+  <details>
+    <summary>Advanced settings and manual inventory key</summary>
+    <p>Leave the key blank to keep the existing key. Keys are encrypted by Canvas and are never displayed. Server environment overrides take precedence and cannot be changed here.</p>
+    <% if ENV["GUARDLMS_API_KEY"].present? %><p>The key is managed by the server environment. Disconnect still disables all reporting.</p><% end %>
+    <div class="ic-Form-control"><%= label_tag :api_key, "Inventory key", class: "ic-Label" %><%= password_field_tag :api_key, nil, autocomplete: "new-password", class: "ic-Input", disabled: ENV["GUARDLMS_API_KEY"].present? %></div>
+    <div class="ic-Form-control"><%= label_tag :api_url, "GuardLMS API origin", class: "ic-Label" %><%= url_field_tag :api_url, @config["GUARDLMS_API_URL"], required: true, class: "ic-Input", readonly: ENV["GUARDLMS_API_URL"].present? %></div>
+    <div class="ic-Form-control"><%= label_tag :dashboard_url, "GuardLMS dashboard origin", class: "ic-Label" %><%= url_field_tag :dashboard_url, ENV["GUARDLMS_DASHBOARD_URL"] || @settings[:dashboard_url] || GuardlmsCanvas::Configuration::DEFAULT_DASHBOARD, required: true, class: "ic-Input", readonly: ENV["GUARDLMS_DASHBOARD_URL"].present? %></div>
+  </details>
+  <p><%= submit_tag "Save settings", class: "Button Button--primary" %> <%= link_to "Return to plugins", "/plugins", class: "Button" %></p>
+<% end %>
+<h2>What is reported</h2>
+<p>Canvas revision, registered plugin IDs, versions and enabled state, plus Ruby and Rails versions. No learner records, course records, plugin settings or credentials are included. Unknown versions and update availability remain unknown.</p>

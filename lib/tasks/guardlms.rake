@@ -2,10 +2,10 @@
 namespace :guardlms do
   desc "Push Canvas component inventory to GuardLMS (schedule daily on one node)"
   task push: :environment do
-    require "guardlms_canvas/connector"
+    require "guardlms_canvas"
     begin
-      connector = GuardlmsCanvas::Connector.new
-      result = connector.push(connector.inventory(canvas: Canvas, rails_version: Rails.version))
+      result = GuardlmsCanvas::Reporting.push(force: true)
+      abort "GuardLMS is disabled, not connected, or a push is already running" unless result
       puts "GuardLMS inventory accepted: #{result.fetch('components_upserted')} components"
     rescue GuardlmsCanvas::Error => error
       abort error.message

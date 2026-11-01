@@ -3,9 +3,16 @@ require "json"
 require "net/http"
 require "openssl"
 require "uri"
+require "timeout"
 
 module GuardlmsCanvas
-  class Error < StandardError; end
+  class Error < StandardError
+    attr_reader :status
+    def initialize(message, status: nil)
+      @status = status
+      super(message)
+    end
+  end
 
   # Deliberately never serializes plugin settings, accounts, courses or users.
   class Connector
@@ -36,18 +43,37 @@ module GuardlmsCanvas
     end
 
     def push(payload)
+      token = @env.fetch("GUARDLMS_API_KEY", "")
+      raise Error, "Configure a website-bound inventory key or connect to GuardLMS" if token.empty? || token.match?(/[\r\n]/)
+      raise Error, "Payload site URL differs from the configured Canvas URL" unless payload[:siteurl] == site_url
+      result = request(PUSH_PATH, payload, token: token)
+      unless result["website_id"].is_a?(Integer) && result["components_upserted"].is_a?(Integer)
+        raise Error, "GuardLMS returned an unexpected response; inventory acceptance is unknown"
+      end
+      result
+    end
+
+    def exchange(code:, state:, siteurl:)
+      result = request("/api/integrations/exchange", { code: code, state: state, siteurl: siteurl })
+      unless result["token"].is_a?(String) && !result["token"].empty? && result["token"].length <= 512 &&
+             !result["token"].match?(/[\r\n]/) && result["website_id"].is_a?(Integer) &&
+             result["siteurl"].to_s.sub(%r{/+\z}, "") == siteurl && result["pushpath"] == PUSH_PATH
+        raise Error, "GuardLMS returned invalid connection details"
+      end
+      result
+    end
+
+    private
+
+    def request(path, payload, token: nil)
       endpoint = https_url(@env.fetch("GUARDLMS_API_URL", "https://api.guardlms.com"), "GUARDLMS_API_URL")
       raise Error, "GUARDLMS_API_URL must be an origin without a path" unless ["", "/"].include?(endpoint.path)
-      endpoint.path = PUSH_PATH
-      token = @env.fetch("GUARDLMS_API_KEY", "")
-      raise Error, "Set GUARDLMS_API_KEY to the website-bound inventory key" if token.empty? || token.match?(/[\r\n]/)
-      raise Error, "Payload site URL differs from GUARDLMS_SITE_URL" unless payload[:siteurl] == site_url
-
+      endpoint.path = path
       request = Net::HTTP::Post.new(endpoint.request_uri)
-      request["Authorization"] = "Bearer #{token}"
+      request["Authorization"] = "Bearer #{token}" if token
       request["Content-Type"] = "application/json"
       request["Accept"] = "application/json"
-      request["User-Agent"] = "GuardLMS-Canvas/0.1.0"
+      request["User-Agent"] = "GuardLMS-Canvas/0.2.0"
       request.body = JSON.generate(payload)
       http = @http_factory.call(endpoint)
       http.use_ssl = true
@@ -56,7 +82,7 @@ module GuardlmsCanvas
       http.read_timeout = 30
       http.write_timeout = 30
       http.max_retries = 0
-      response = http.request(request)
+      response = Timeout.timeout(45) { http.request(request) }
       case response.code.to_i
       when 200
         begin
@@ -64,17 +90,17 @@ module GuardlmsCanvas
         rescue JSON::ParserError
           raise Error, "GuardLMS returned invalid JSON; inventory acceptance is unknown"
         end
-        unless result.is_a?(Hash) && result["data"].is_a?(Hash) && result["data"]["website_id"].is_a?(Integer)
+        unless result.is_a?(Hash) && result["data"].is_a?(Hash)
           raise Error, "GuardLMS returned an unexpected response; inventory acceptance is unknown"
         end
         result["data"]
       when 401, 403
-        raise Error, "GuardLMS refused the key; replace it with a valid website-bound inventory key"
+        raise Error.new("GuardLMS refused the key; reconnect to GuardLMS", status: response.code.to_i)
       when 422
-        raise Error, "GuardLMS rejected the inventory; check GUARDLMS_SITE_URL matches the registered website and review the payload schema"
+        raise Error.new("GuardLMS rejected the inventory; check the configured site URL matches the registered website", status: 422)
       else
         # Never follow redirects with a credential or echo remote bodies into logs.
-        raise Error, "GuardLMS inventory push failed (HTTP #{response.code}); retry on the next scheduled run"
+        raise Error.new("GuardLMS request failed (HTTP #{response.code}); retry on the next scheduled run", status: response.code.to_i)
       end
     rescue Timeout::Error, SocketError, IOError, SystemCallError, OpenSSL::SSL::SSLError
       raise Error, "GuardLMS connection failed; check connectivity and TLS, then retry"
