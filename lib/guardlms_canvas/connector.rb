@@ -4,6 +4,7 @@ require "net/http"
 require "openssl"
 require "uri"
 require "timeout"
+require_relative "environment_inventory"
 
 module GuardlmsCanvas
   class Error < StandardError
@@ -48,7 +49,7 @@ module GuardlmsCanvas
         canvas: { version: bounded(canvas.revision, 100), plugins: plugins },
         ruby: { version: bounded(ruby_version, 50) },
         rails: { version: bounded(rails_version, 50) }
-      }
+      }.merge(EnvironmentInventory.collect(env: @env, database: -> { EnvironmentInventory.postgres_version }))
     end
 
     def push(payload)

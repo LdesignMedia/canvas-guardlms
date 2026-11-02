@@ -17,6 +17,8 @@ inspect course content or enumerate external LTI applications or installed gems.
 | `canvas.plugins[].enabled` | Plugin's enabled state |
 | `ruby.version` | Running Ruby version |
 | `rails.version` | Running Rails version |
+| `server` | OS family, distribution ID/name/version/description, architecture and optional configured web-server signature |
+| `database.version` | PostgreSQL server version read with `SHOW server_version` |
 
 Example payload, with illustrative versions and a placeholder timestamp:
 
@@ -49,7 +51,8 @@ It requires the same site administrator permission as the settings page.
 - Canonical site URL up to **255 characters**.
 
 Missing or blank versions become `null`. If Canvas exposes no revision, GuardLMS
-does not add a Canvas core row from the push. Metadata exceeding the connector
+does not persist a Canvas core row from the push. The dashboard can still identify
+Canvas from authenticated inventory without guessing its release. Metadata exceeding the connector
 limits fails collection before a request is sent; receiver validation can reject
 the payload separately. The connector does not check available updates; unknown
 versions and update availability must not be treated as evidence of being up to date.
@@ -88,3 +91,13 @@ plugin settings unless supplied through the server environment.
 This version does not inject a browser monitoring SDK, capture JavaScript or server
 errors, collect page analytics, audit security configuration, enumerate gems or
 provide a Canvas-specific advisory catalog.
+
+OS metadata describes the application environment (including a container when
+used), rather than the physical host. Only allowlisted `/etc/os-release` fields
+are read, with a 16 KiB input limit. No hostnames, database names, connection
+strings or credentials are reported. Optional metadata is omitted if unavailable.
+
+Set `GUARDLMS_WEBSERVER` to a known fronting server signature, for example
+`nginx/1.24.0`. The connector does not infer a server version from a client gem
+or assume the reverse proxy is running inside the Canvas container. Update this
+setting when the proxy is upgraded.
