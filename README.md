@@ -116,11 +116,14 @@ reporting** selected. Schedule on one node. See
 | Canvas | The revision reported by the running installation |
 | Registered server plugins | Plugin IDs, versions and enabled state from Canvas's plugin registry |
 | Runtime | Ruby and Rails versions |
+| Server | Application OS distribution/version and CPU architecture; optional configured web-server signature |
+| Database | PostgreSQL server version from the existing Canvas database connection |
 | Website | Canonical Canvas URL and inventory generation timestamp |
 
 Unknown versions remain unknown; update availability is not checked. If Canvas
 exposes no revision, its core version is `null` and the push adds no Canvas core
-row to Tech Stack. External LTI apps and installed Ruby gems are not enumerated.
+row to the stored inventory. Tech Stack still identifies Canvas from its authenticated
+inventory, with the version shown as unknown. External LTI apps and installed Ruby gems are not enumerated.
 One connector reports the whole installation, rather than a separate inventory
 for each Canvas account.
 

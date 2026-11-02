@@ -28,6 +28,7 @@ module GuardlmsCanvas
       {
         "GUARDLMS_SITE_URL" => env["GUARDLMS_SITE_URL"] || data[:site_url],
         "GUARDLMS_API_URL" => env["GUARDLMS_API_URL"] || data[:api_url] || DEFAULT_API,
+        "GUARDLMS_WEBSERVER" => env["GUARDLMS_WEBSERVER"] || data[:webserver],
         "GUARDLMS_API_KEY" => env["GUARDLMS_API_KEY"] || data[:api_key_dec]
       }.transform_values { |value| value.to_s }
     end

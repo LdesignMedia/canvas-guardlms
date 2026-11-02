@@ -50,6 +50,7 @@ These variables override the corresponding stored settings:
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `GUARDLMS_SITE_URL` | Stored canonical URL | HTTPS Canvas URL registered in GuardLMS |
+| `GUARDLMS_WEBSERVER` | Unset | Optional known web-server signature, for example `nginx/1.24.0` |
 | `GUARDLMS_API_KEY` | Encrypted stored key | Website-bound inventory key |
 | `GUARDLMS_API_URL` | `https://api.guardlms.com` | HTTPS API origin, without `/api` |
 | `GUARDLMS_DASHBOARD_URL` | `https://dashboard.guardlms.com` | HTTPS dashboard origin for browser connection |
