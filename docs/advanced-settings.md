@@ -96,7 +96,12 @@ older request restoring connection state after settings change or disconnect.
 ## Key renewal and connection status
 
 The settings page shows connection status, key expiry, last attempt, last accepted
-inventory and component count. A supplied expiry in the past shows **Reconnect
+inventory and component count, plus the next inventory or retry time. The page
+identifies production, staging or a custom destination and links to the website
+with **Open dashboard**. An enabled daily connection with no accepted inventory
+for more than 48 hours shows **Inventory overdue**; disabled automatic reporting
+does not trigger this warning. Keys expiring within 30 days show a renewal warning.
+A supplied expiry in the past shows **Reconnect
 required**. HTTP 401/403 also shows that status and stops automatic retries.
 
 For browser-managed connections, click **Connect to GuardLMS** again and approve

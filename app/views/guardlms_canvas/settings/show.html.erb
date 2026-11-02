@@ -5,16 +5,35 @@
   <strong><%= @connection_status %></strong>
   <% if @settings[:last_error] %><p><%= @settings[:last_error] %></p><% end %>
 </div>
+<% if @expiry_warning %>
+  <div class="ic-notification ic-notification--warning" role="status"><%= @expiry_warning %></div>
+<% end %>
 <dl>
+  <dt>GuardLMS destination</dt><dd><%= @destination_label %></dd>
   <dt>Last accepted inventory</dt><dd><%= @settings[:last_success_at] ? Time.at(@settings[:last_success_at]).utc.strftime("%Y-%m-%d %H:%M UTC") : "Not yet received" %></dd>
   <dt>Last attempt</dt><dd><%= @settings[:last_attempt_at] ? Time.at(@settings[:last_attempt_at]).utc.strftime("%Y-%m-%d %H:%M UTC") : "Not yet attempted" %></dd>
   <dt>Reported components</dt><dd><%= @settings[:components_upserted] || "Not yet reported" %></dd>
   <dt>Key expires</dt><dd><%= @settings[:expires_at] || "Not supplied (check your GuardLMS account)" %></dd>
-  <dt>Automatic reporting</dt><dd><%= @settings[:daily_enabled] == false ? "Off" : "Daily, using Canvas background jobs" %></dd>
+  <dt><%= @settings[:failure_count].to_i.positive? ? "Next retry" : "Next inventory" %></dt>
+  <dd>
+    <% if @settings[:disabled] || @settings[:daily_enabled] == false %>
+      Automatic reporting is off
+    <% elsif @settings[:auth_rejected_at] %>
+      Reconnect to resume reporting
+    <% elsif @settings[:next_attempt_at] %>
+      <%= Time.at(@settings[:next_attempt_at]).utc.strftime("%Y-%m-%d %H:%M UTC") %>
+    <% else %>
+      Due on the next Canvas worker check
+    <% end %>
+  </dd>
+  <dt>Automatic reporting</dt><dd><%= (@settings[:disabled] || @settings[:daily_enabled] == false) ? "Off" : "Daily, using Canvas background jobs" %></dd>
 </dl>
 <p>Canvas's background worker must be running. Failed requests retry with backoff; a rejected key requires reconnecting. A last successful push does not prove the worker is currently running.</p>
 <div style="display: flex; flex-wrap: wrap; gap: 8px; margin: 20px 0;">
-  <%= button_to "Connect to GuardLMS", "/plugins/guardlms/connect", method: :post, class: "Button Button--primary", disabled: ENV["GUARDLMS_API_KEY"].present? %>
+  <% if @dashboard_link %>
+    <%= link_to "Open dashboard", @dashboard_link, class: "Button", target: "_blank", rel: "noopener noreferrer" %>
+  <% end %>
+  <%= button_to GuardlmsCanvas::Configuration.connected?(@settings) ? "Reconnect to GuardLMS" : "Connect to GuardLMS", "/plugins/guardlms/connect", method: :post, class: "Button Button--primary", disabled: ENV["GUARDLMS_API_KEY"].present? %>
   <%= button_to "Push now", "/plugins/guardlms/push", method: :post, class: "Button" %>
   <%= button_to "Disconnect", "/plugins/guardlms/disconnect", method: :post, class: "Button" %>
   <%= link_to "Preview reported data", "/plugins/guardlms/preview", class: "Button", target: "_blank", rel: "noopener" %>

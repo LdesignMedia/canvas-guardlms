@@ -127,4 +127,61 @@ class LifecycleTest < Minitest::Test
     refute_includes error.message, "private"
     refute_includes @store.data[:last_error], "private"
   end
+  def test_ignored_snapshot_preserves_the_last_accepted_inventory_and_retries
+    GuardlmsCanvas::Reporting.push(**@options)
+    accepted_at = @store.data[:last_success_at]
+    @client.error = GuardlmsCanvas::Error.new("GuardLMS ignored an older inventory; check the Canvas clock")
+    assert_raises(GuardlmsCanvas::Error) { GuardlmsCanvas::Reporting.push(force: true, **@options) }
+    assert_equal accepted_at, @store.data[:last_success_at]
+    assert_equal 46, @store.data[:components_upserted]
+    assert_equal "Push failed", GuardlmsCanvas::Configuration.status(@store.read, {})
+    assert_in_delta Time.now.to_i + 300, @store.data[:next_attempt_at], 2
+    assert_nil @store.data[:lease_until]
+  end
+
+  def test_status_distinguishes_paused_overdue_and_manually_scheduled_reporting
+    now = Time.utc(2026, 11, 2)
+    @store.data[:last_success_at] = now.to_i - 172_800
+    assert_equal "Connected", GuardlmsCanvas::Configuration.status(@store.read, {}, now: now)
+    @store.data[:last_success_at] -= 1
+    assert_includes GuardlmsCanvas::Configuration.status(@store.read, {}, now: now), "Inventory overdue"
+    @store.data[:daily_enabled] = false
+    assert_equal "Connected", GuardlmsCanvas::Configuration.status(@store.read, {}, now: now)
+    @store.data[:disabled] = true
+    assert_equal "Reporting paused", GuardlmsCanvas::Configuration.status(@store.read, {}, now: now)
+    @store.data.delete(:api_key_dec)
+    assert_equal "Disconnected", GuardlmsCanvas::Configuration.status(@store.read, {}, now: now)
+  end
+
+  def test_expiry_warning_appears_before_expiry_and_status_requires_reconnection_afterwards
+    now = Time.utc(2026, 11, 2)
+    @store.data[:expires_at] = (now + 30 * 86_400).iso8601
+    assert_includes GuardlmsCanvas::Configuration.expiry_warning(@store.read, now: now), "Reconnect before expiry"
+    assert_equal "Connected — awaiting first push", GuardlmsCanvas::Configuration.status(@store.read, {}, now: now)
+    @store.data[:expires_at] = (now + 30 * 86_400 + 1).iso8601
+    assert_nil GuardlmsCanvas::Configuration.expiry_warning(@store.read, now: now)
+    @store.data[:expires_at] = now.iso8601
+    assert_nil GuardlmsCanvas::Configuration.expiry_warning(@store.read, now: now)
+    assert_equal "Reconnect required", GuardlmsCanvas::Configuration.status(@store.read, {}, now: now)
+    @store.data[:expires_at] = "not-a-date"
+    assert_nil GuardlmsCanvas::Configuration.expiry_warning(@store.read, now: now)
+    assert_equal "Reconnect required", GuardlmsCanvas::Configuration.status(@store.read, {}, now: now)
+  end
+
+  def test_dashboard_links_and_destination_labels_respect_overrides_and_validate_origins
+    @store.data[:website_id] = 35
+    assert_equal "https://dashboard.guardlms.com/websites/35", GuardlmsCanvas::Configuration.dashboard_link(@store.read, {})
+    assert_equal "Production", GuardlmsCanvas::Configuration.destination_label(@store.read, {})
+    env = {"GUARDLMS_API_URL" => "https://api-staging.guardlms.com/", "GUARDLMS_DASHBOARD_URL" => "https://dashboard-staging.guardlms.com/"}
+    assert_equal "Staging", GuardlmsCanvas::Configuration.destination_label(@store.read, env)
+    assert_equal "https://dashboard-staging.guardlms.com/websites/35", GuardlmsCanvas::Configuration.dashboard_link(@store.read, env)
+    env["GUARDLMS_DASHBOARD_URL"] = "https://guardlms.example.com"
+    assert_equal "Custom GuardLMS instance", GuardlmsCanvas::Configuration.destination_label(@store.read, env)
+    @store.data[:website_id] = "35/other"
+    assert_equal "https://guardlms.example.com", GuardlmsCanvas::Configuration.dashboard_link(@store.read, env)
+    env["GUARDLMS_DASHBOARD_URL"] = "javascript:alert(1)"
+    assert_nil GuardlmsCanvas::Configuration.dashboard_link(@store.read, env)
+    assert_equal "Invalid GuardLMS destination", GuardlmsCanvas::Configuration.destination_label(@store.read, env)
+  end
+
 end

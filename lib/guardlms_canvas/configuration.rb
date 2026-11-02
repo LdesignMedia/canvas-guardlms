@@ -37,13 +37,43 @@ module GuardlmsCanvas
     end
 
     def self.status(data, env = ENV, now: Time.now)
-      return "Disconnected" if data[:disabled] && data[:managed]
+      return connected?(data, env) ? "Reporting paused" : "Disconnected" if data[:disabled] && data[:managed]
       return "Not connected" unless connected?(data, env)
       return "Reconnect required" if data[:auth_rejected_at] || (data[:expires_at] && Time.iso8601(data[:expires_at]) <= now)
       return "Push failed" if data[:last_error]
+      if data[:daily_enabled] != false && data[:last_success_at] && now.to_i - data[:last_success_at].to_i > 172_800
+        return "Inventory overdue — check Canvas background workers"
+      end
       data[:last_success_at] ? "Connected" : "Connected — awaiting first push"
     rescue ArgumentError
       "Reconnect required"
+    end
+
+    def self.expiry_warning(data, now: Time.now)
+      return unless data[:expires_at]
+      expires = Time.iso8601(data[:expires_at])
+      return unless expires > now && expires <= now + 30 * 86_400
+      "Inventory key expires on #{expires.utc.strftime('%Y-%m-%d')}. Reconnect before expiry to keep reporting."
+    rescue ArgumentError
+      nil # The connection status already asks the administrator to reconnect.
+    end
+
+    def self.dashboard_link(data, env = ENV)
+      origin = url(env["GUARDLMS_DASHBOARD_URL"] || data[:dashboard_url] || DEFAULT_DASHBOARD, "GuardLMS dashboard URL", origin: true)
+      id = data[:website_id]
+      id.is_a?(Integer) && id.positive? ? "#{origin}/websites/#{id}" : origin
+    rescue Error
+      nil
+    end
+
+    def self.destination_label(data, env = ENV)
+      api = url(environment(data, env)["GUARDLMS_API_URL"], "GuardLMS API URL", origin: true)
+      dashboard = url(env["GUARDLMS_DASHBOARD_URL"] || data[:dashboard_url] || DEFAULT_DASHBOARD, "GuardLMS dashboard URL", origin: true)
+      return "Production" if api == DEFAULT_API && dashboard == DEFAULT_DASHBOARD
+      return "Staging" if api == "https://api-staging.guardlms.com" && dashboard == "https://dashboard-staging.guardlms.com"
+      "Custom GuardLMS instance"
+    rescue Error
+      "Invalid GuardLMS destination"
     end
 
     def self.reset_connection(data)
