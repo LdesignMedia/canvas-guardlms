@@ -10,6 +10,9 @@ module GuardlmsCanvas
       @settings = Store.read
       @config = Configuration.environment(@settings)
       @connection_status = Configuration.status(@settings)
+      @expiry_warning = Configuration.expiry_warning(@settings)
+      @dashboard_link = Configuration.dashboard_link(@settings)
+      @destination_label = Configuration.destination_label(@settings)
       set_active_tab "plugins"
     end
 

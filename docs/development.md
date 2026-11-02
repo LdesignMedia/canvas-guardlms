@@ -10,6 +10,7 @@ supported by the target Canvas release.
 | CI runtime | Coverage |
 | --- | --- |
 | Ruby 3.1 / Rails 7.2 | Connector and lifecycle tests, engine smoke test, gem build |
+| Ruby 3.3 / Rails 7.1 | Connector and lifecycle tests, engine smoke test, gem build |
 | Ruby 3.4 / Rails 8.0 | Connector and lifecycle tests, engine smoke test, gem build |
 
 The engine smoke test uses a minimal Canvas registry double. These combinations
@@ -28,7 +29,7 @@ gem build guardlms_canvas.gemspec
 ```
 
 For the Rails 8.0 matrix, use Ruby 3.4 and install `railties` with `~> 8.0.0`
-instead. CI runs both combinations and builds the gem with its controllers and
+instead. CI runs all three combinations and builds the gem with its controllers and
 templates. The repository is private; CI does not publish a RubyGem.
 
 Tests cover inventory collection and transport, callback state, single-use sessions,

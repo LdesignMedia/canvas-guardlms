@@ -24,9 +24,18 @@ module GuardlmsCanvas
     end
 
     def inventory(canvas:, rails_version:, ruby_version: RUBY_VERSION, now: Time.now)
+      ids = {}
       plugins = canvas::Plugin.all.map do |plugin|
+        id = plugin.id.to_s
+        if id.strip.empty? || id.length > 120
+          raise Error, "Canvas plugin IDs must contain 1–120 characters; inventory was not sent"
+        end
+        if ids[id.downcase]
+          raise Error, "Canvas plugin IDs must be unique ignoring case; inventory was not sent"
+        end
+        ids[id.downcase] = true
         {
-          id: bounded(plugin.id, 255),
+          id: id,
           version: bounded(plugin.version, 100),
           enabled: !!plugin.enabled?
         }
@@ -49,6 +58,9 @@ module GuardlmsCanvas
       result = request(PUSH_PATH, payload, token: token)
       unless result["website_id"].is_a?(Integer) && result["components_upserted"].is_a?(Integer)
         raise Error, "GuardLMS returned an unexpected response; inventory acceptance is unknown"
+      end
+      if result["stale"] == true
+        raise Error, "GuardLMS ignored an older inventory. Check the Canvas server clock; the last accepted inventory was preserved"
       end
       result
     end
@@ -97,7 +109,7 @@ module GuardlmsCanvas
       when 401, 403
         raise Error.new("GuardLMS refused the key; reconnect to GuardLMS", status: response.code.to_i)
       when 422
-        raise Error.new("GuardLMS rejected the inventory; check the configured site URL matches the registered website", status: 422)
+        raise Error.new("GuardLMS rejected the inventory; check the canonical site URL and inventory field limits", status: 422)
       else
         # Never follow redirects with a credential or echo remote bodies into logs.
         raise Error.new("GuardLMS request failed (HTTP #{response.code}); retry on the next scheduled run", status: response.code.to_i)

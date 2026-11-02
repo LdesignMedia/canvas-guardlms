@@ -2,6 +2,7 @@
 gem "minitest", "~> 5.0"
 require "minitest/autorun"
 require "ostruct"
+require "minitest/mock"
 require_relative "../lib/guardlms_canvas/connector"
 
 class ConnectorTest < Minitest::Test
@@ -122,4 +123,41 @@ class ConnectorTest < Minitest::Test
   ensure
     plugin.define_singleton_method(:all, original)
   end
+  def test_plugin_ids_match_receiver_limits_without_truncating_or_dropping_plugins
+    valid = Plugin.new("a" * 120, "1.0", true, {})
+    FakeCanvas::Plugin.stub(:all, [valid]) do
+      assert_equal "a" * 120, payload[:canvas][:plugins].first[:id]
+    end
+    [nil, "", "   ", "a" * 121].each do |id|
+      FakeCanvas::Plugin.stub(:all, [valid, Plugin.new(id, "1.0", true, {})]) do
+        error = assert_raises(GuardlmsCanvas::Error) { connector.push(payload) }
+        assert_includes error.message, "1–120"
+      end
+    end
+    assert_empty @http.requests
+  end
+
+  def test_case_insensitive_duplicate_plugin_ids_fail_before_network
+    plugins = [Plugin.new("Example", "1.0", true, {}), Plugin.new("example", "2.0", false, {})]
+    FakeCanvas::Plugin.stub(:all, plugins) do
+      error = assert_raises(GuardlmsCanvas::Error) { connector.push(payload) }
+      assert_includes error.message, "unique ignoring case"
+    end
+    assert_empty @http.requests
+  end
+
+  def test_stale_response_is_not_reported_as_accepted_inventory
+    @http = FakeHTTP.new("200", '{"data":{"website_id":7,"stale":true,"components_upserted":0}}')
+    error = assert_raises(GuardlmsCanvas::Error) { connector.push(payload) }
+    assert_includes error.message, "older inventory"
+    assert_includes error.message, "clock"
+  end
+
+  def test_validation_errors_do_not_blame_only_the_site_url
+    @http = FakeHTTP.new("422", "private validation details")
+    error = assert_raises(GuardlmsCanvas::Error) { connector.push(payload) }
+    assert_includes error.message, "inventory field limits"
+    refute_includes error.message, "private"
+  end
+
 end

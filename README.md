@@ -27,7 +27,7 @@ preview the reported data and check when GuardLMS last accepted an inventory.
 - **Self-hosted Canvas** with access to its deployment, Gemfile and background workers.
   This Rails engine cannot be installed in Instructure-hosted Canvas as an LTI app.
 - Ruby **3.1 or later**, using the Ruby, Rails and Bundler versions required by your
-  Canvas release. CI covers Ruby 3.1/Rails 7.2 and Ruby 3.4/Rails 8.0; see
+  Canvas release. CI covers Ruby 3.3/Rails 7.1, Ruby 3.1/Rails 7.2 and Ruby 3.4/Rails 8.0; see
   [compatibility and validation](docs/development.md).
 - A Canvas site administrator with **Manage site settings** permission.
 - A GuardLMS account, a canonical HTTPS Canvas URL and outbound HTTPS access to GuardLMS.

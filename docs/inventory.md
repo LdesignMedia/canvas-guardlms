@@ -42,9 +42,8 @@ It requires the same site administrator permission as the settings page.
 ## Limits and unknown values
 
 - Up to **2,000 registered plugins** per inventory.
-- Plugin IDs up to **120 characters** accepted by GuardLMS, unique regardless of case.
-  The connector itself permits up to 255 characters; longer IDs within that range
-  are collected but rejected by the receiver.
+- Plugin IDs must contain **1–120 characters** and be unique regardless of case.
+  Missing, oversized or duplicate IDs fail collection locally; no partial list is sent.
 - Canvas and plugin versions up to **100 characters**.
 - Ruby and Rails versions up to **50 characters**.
 - Canonical site URL up to **255 characters**.
@@ -71,7 +70,9 @@ credentials into Canvas status messages. The settings and preview responses use
 
 GuardLMS atomically replaces the previous Canvas inventory with a complete accepted
 snapshot, removing plugins that are no longer present while preserving records
-owned by other connectors. Older snapshots are ignored. The receiver rejects
+owned by other connectors. Older snapshots are ignored. The connector treats a
+stale response as a failed attempt, preserves the last accepted time and component
+count, and asks the administrator to check the Canvas clock. The receiver rejects
 generation timestamps more than one hour in the future, so keep the Canvas server
 clock synchronized.
 
